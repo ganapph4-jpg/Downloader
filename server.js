@@ -1,5 +1,7 @@
 const express = require('express');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -18,19 +20,28 @@ app.get('/download', (req, res) => {
   const url = req.query.url;
   if (!url) return res.send('Please provide a URL!');
 
-  // Use yt-dlp binary
-  const ytdlp = spawn('./yt-dlp', ['-f', 'best', '-o', '-', url]);
+  const tempPath = path.join('/tmp', 'video.mp4');
 
-  res.header('Content-Disposition', `attachment; filename="video.mp4"`);
+  // Delete old temp file if exists
+  if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 
-  ytdlp.stdout.pipe(res);
+  // Download video to /tmp/video.mp4
+  const ytdlp = spawn('./yt-dlp', ['-f', 'best', '-o', tempPath, url]);
 
   ytdlp.stderr.on('data', (data) => {
     console.error(`yt-dlp error: ${data}`);
   });
 
   ytdlp.on('close', (code) => {
-    console.log(`yt-dlp process exited with code ${code}`);
+    if (code === 0 && fs.existsSync(tempPath)) {
+      // Send file to client
+      res.download(tempPath, 'video.mp4', (err) => {
+        if (err) console.error(err);
+        fs.unlinkSync(tempPath); // clean up
+      });
+    } else {
+      res.send('Failed to download video. Maybe the link is invalid or not supported.');
+    }
   });
 });
 
