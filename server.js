@@ -1,6 +1,5 @@
 const express = require('express');
-const ytdlp = require('yt-dlp-exec');
-const path = require('path');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -15,28 +14,24 @@ app.get('/', (req, res) => {
   `);
 });
 
-app.get('/download', async (req, res) => {
+app.get('/download', (req, res) => {
   const url = req.query.url;
   if (!url) return res.send('Please provide a URL!');
 
-  try {
-    // Generate a safe filename
-    const title = `video.mp4`; // optional: you can make dynamic using yt-dlp metadata
+  // Use yt-dlp binary
+  const ytdlp = spawn('./yt-dlp', ['-f', 'best', '-o', '-', url]);
 
-    res.header('Content-Disposition', `attachment; filename="${title}"`);
+  res.header('Content-Disposition', `attachment; filename="video.mp4"`);
 
-    // Stream video directly
-    const stream = ytdlp(url, {
-      format: 'best',
-      output: '-'
-    });
+  ytdlp.stdout.pipe(res);
 
-    stream.stdout.pipe(res);
+  ytdlp.stderr.on('data', (data) => {
+    console.error(`yt-dlp error: ${data}`);
+  });
 
-    stream.on('close', () => console.log('Download finished!'));
-  } catch (err) {
-    res.send('Error: ' + err.message);
-  }
+  ytdlp.on('close', (code) => {
+    console.log(`yt-dlp process exited with code ${code}`);
+  });
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
